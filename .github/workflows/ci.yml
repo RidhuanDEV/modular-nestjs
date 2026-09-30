@@ -30,6 +30,10 @@ jobs:
       CORS_ORIGINS: http://localhost:5173
       ADMIN_EMAIL: admin@example.com
       ADMIN_PASSWORD: ci_admin_password_0123456789
+      # Compose database/Redis ports are separate from the Actions services above.
+      POSTGRES_PORT: "55434"
+      REDIS_PORT: "56380"
+      APP_PORT: "3102"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -69,11 +73,11 @@ jobs:
         run: docker build --pull -t nestjs-template:ci .
       - name: Compose startup follows one-shot migration
         run: |
-          docker compose -f compose.yaml up -d --build --wait app
-          curl --fail --silent http://127.0.0.1:3000/ready >/dev/null
+          docker compose --env-file .env.example -f compose.yaml up -d --build --wait app
+          curl --fail --silent http://127.0.0.1:3102/ready >/dev/null
       - name: Stop Compose smoke stack
         if: always()
-        run: docker compose -f compose.yaml down --volumes
+        run: docker compose --env-file .env.example -f compose.yaml down --volumes
 
   upgrade:
     runs-on: ubuntu-latest
