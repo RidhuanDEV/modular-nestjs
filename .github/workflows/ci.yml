@@ -4,6 +4,41 @@ on:
   pull_request:
 
 jobs:
+  mysql:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: ci-mysql-fixture
+          MYSQL_DATABASE: backend
+          MYSQL_USER: backend
+          MYSQL_PASSWORD: ci-mysql-fixture
+        ports: [3306:3306]
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 --silent"
+          --health-interval 5s --health-timeout 3s --health-retries 30
+    env:
+      NODE_ENV: test
+      DB_PROVIDER: mysql
+      DATABASE_URL: mysql://backend:ci-mysql-fixture@127.0.0.1:3306/backend
+      JWT_SECRET: ci_secret_0123456789_abcdefghijklmnopqrstuvwxyz
+      CORS_ORIGINS: http://localhost:5173
+      ADMIN_EMAIL: admin@example.com
+      ADMIN_PASSWORD: ci_admin_password_0123456789
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci
+      - run: npm run verify:template
+      - run: npm run prisma:migrate:deploy
+      - run: npm run seed
+      - run: npm run seed
+      - run: npm run test:database
+      - run: docker build --build-arg DB_PROVIDER=mysql -t nestjs-mysql:ci .
   verify:
     runs-on: ubuntu-latest
     services:
