@@ -108,11 +108,24 @@ jobs:
         run: docker build --pull -t nestjs-template:ci .
       - name: Compose startup follows one-shot migration
         run: |
-          docker compose --env-file .env.example -f compose.yaml up -d --build --wait app
+          cp .env.example .env
+          docker compose --env-file .env -f compose.yaml up -d --build --wait app worker
+          curl --fail --silent http://127.0.0.1:3102/ >/dev/null
+          curl --fail --silent http://127.0.0.1:3102/live >/dev/null
           curl --fail --silent http://127.0.0.1:3102/ready >/dev/null
+          docker compose --env-file .env -f compose.yaml ps --status running --services | grep -qx worker
       - name: Stop Compose smoke stack
         if: always()
-        run: docker compose --env-file .env.example -f compose.yaml down --volumes
+        run: |
+          if [ -f .env ]; then
+            docker compose --env-file .env -f compose.yaml --profile '*' down --volumes --remove-orphans --rmi local
+          fi
+      - name: Stop MinIO fixture
+        if: always()
+        run: |
+          if docker container inspect nestjs-ci-minio >/dev/null 2>&1; then
+            docker rm -f -v nestjs-ci-minio
+          fi
 
   upgrade:
     runs-on: ubuntu-latest
