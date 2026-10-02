@@ -110,9 +110,9 @@ jobs:
         run: |
           cp .env.example .env
           docker compose --env-file .env -f compose.yaml up -d --build --wait app worker
-          curl --fail --silent http://127.0.0.1:3102/ >/dev/null
-          curl --fail --silent http://127.0.0.1:3102/live >/dev/null
-          curl --fail --silent http://127.0.0.1:3102/ready >/dev/null
+          curl --fail --silent --show-error http://127.0.0.1:3102/health >/dev/null
+          curl --fail --silent --show-error http://127.0.0.1:3102/live >/dev/null
+          curl --fail --silent --show-error http://127.0.0.1:3102/ready >/dev/null
           docker compose --env-file .env -f compose.yaml ps --status running --services | grep -qx worker
       - name: Stop Compose smoke stack
         if: always()
