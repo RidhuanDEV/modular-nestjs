@@ -241,3 +241,42 @@ test("expected Prisma and body-parser failures are not reported as 500", async (
   );
   assert.equal(captured.status, 400);
 });
+
+test("unexpected failures log the stack server-side without exposing it", async () => {
+  const { HttpExceptionFilter } =
+    await import("../common/http/http-exception.filter");
+  const { Logger } = await import("@nestjs/common");
+  const captured: { status?: number; body?: unknown } = {};
+  const response = {
+    status(code: number) {
+      captured.status = code;
+      return this;
+    },
+    json(body: unknown) {
+      captured.body = body;
+      return this;
+    },
+  };
+  const host = {
+    switchToHttp: () => ({ getResponse: () => response }),
+  } as never;
+  const logged: unknown[][] = [];
+  const original = Logger.prototype.error;
+  Logger.prototype.error = function (...args: unknown[]) {
+    logged.push(args);
+  };
+  try {
+    const failure = new TypeError("boom");
+    new HttpExceptionFilter().catch(failure, host);
+    assert.equal(captured.status, 500);
+    assert.deepEqual(captured.body, {
+      success: false,
+      message: "Internal server error",
+      errors: [],
+    });
+    assert.equal(logged.length, 1);
+    assert.equal(logged[0]![1], failure.stack);
+  } finally {
+    Logger.prototype.error = original;
+  }
+});
