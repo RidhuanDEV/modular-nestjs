@@ -280,3 +280,33 @@ test("unexpected failures log the stack server-side without exposing it", async 
     Logger.prototype.error = original;
   }
 });
+
+test("refresh lifetimes default to 30 idle / 90 absolute and are validated", () => {
+  const base = {
+    DATABASE_URL:
+      "postgresql://fixture_user:fixture_password@localhost/example",
+    JWT_SECRET: "local_secret_0123456789_abcdefghijklmnop",
+  };
+  const defaults = validateEnvironment(base);
+  assert.equal(defaults.REFRESH_TOKEN_IDLE_DAYS, 30);
+  assert.equal(defaults.REFRESH_TOKEN_ABSOLUTE_DAYS, 90);
+  const custom = validateEnvironment({
+    ...base,
+    REFRESH_TOKEN_IDLE_DAYS: "7",
+    REFRESH_TOKEN_ABSOLUTE_DAYS: "14",
+  });
+  assert.equal(custom.REFRESH_TOKEN_IDLE_DAYS, 7);
+  assert.equal(custom.REFRESH_TOKEN_ABSOLUTE_DAYS, 14);
+  for (const [idle, absolute] of [
+    ["0", "90"],
+    ["30", "0"],
+    ["31", "30"],
+  ] as const)
+    assert.throws(() =>
+      validateEnvironment({
+        ...base,
+        REFRESH_TOKEN_IDLE_DAYS: idle,
+        REFRESH_TOKEN_ABSOLUTE_DAYS: absolute,
+      }),
+    );
+});
