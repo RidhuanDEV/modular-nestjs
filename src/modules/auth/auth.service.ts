@@ -14,7 +14,7 @@ import { AuditService } from "../../common/audit/audit.service";
 import { EndpointPolicyService } from "../../common/endpoint/endpoint.registry";
 import type { Actor } from "../../common/http/request-context";
 import type {
-  AuthResponseDto,
+  IssuedTokens,
   AuthUserResponseDto,
   LoginDto,
   RegisterDto,
@@ -22,7 +22,9 @@ import type {
 
 import { lockRefreshFamily } from "../../common/auth/refresh-family";
 
+// Idle timeout per token; the family is an absolute cap that rotation never extends.
 const REFRESH_DAYS = 30;
+const SESSION_DAYS = 90;
 function hashToken(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
@@ -70,7 +72,7 @@ export class AuthService {
       Prisma.TransactionClient,
       "refreshToken" | "refreshFamily"
     > = this.prisma,
-  ): Promise<AuthResponseDto> {
+  ): Promise<IssuedTokens> {
     const token = await this.jwt.signAsync(
       { sub: user.id, tokenUse: "access" },
       {
@@ -83,7 +85,11 @@ export class AuthService {
     );
     const refreshToken = randomBytes(48).toString("base64url");
     await writer.refreshFamily.create({
-      data: { id: familyId, userId: user.id, expiresAt },
+      data: {
+        id: familyId,
+        userId: user.id,
+        expiresAt: new Date(Date.now() + SESSION_DAYS * 86400000),
+      },
     });
     await writer.refreshToken.create({
       data: {
@@ -134,7 +140,7 @@ export class AuthService {
     return this.toUser(user);
   }
 
-  async login(input: LoginDto, requestId?: string): Promise<AuthResponseDto> {
+  async login(input: LoginDto, requestId?: string): Promise<IssuedTokens> {
     const user = await this.prisma.user.findUnique({
       where: { email: normalizeEmail(input.email) },
       include: { role: true },
@@ -170,7 +176,7 @@ export class AuthService {
     return result;
   }
 
-  async refresh(value: string, requestId?: string): Promise<AuthResponseDto> {
+  async refresh(value: string, requestId?: string): Promise<IssuedTokens> {
     const existing = await this.prisma.refreshToken.findUnique({
       where: { tokenHash: hashToken(value) },
     });
@@ -235,14 +241,15 @@ export class AuthService {
           );
         return undefined;
       }
-      const expiresAt = new Date(now.getTime() + REFRESH_DAYS * 86400000);
+      const expiresAt = new Date(
+        Math.min(
+          now.getTime() + REFRESH_DAYS * 86400000,
+          family.expiresAt.getTime(),
+        ),
+      );
       await tx.refreshToken.update({
         where: { id: stored.id },
         data: { revokedAt: now },
-      });
-      await tx.refreshFamily.update({
-        where: { id: family.id },
-        data: { expiresAt },
       });
       await tx.refreshToken.create({
         data: {
